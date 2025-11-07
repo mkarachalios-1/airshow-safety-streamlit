@@ -103,7 +103,7 @@ fig2.add_trace(go.Scatter(x=hist["years"], y=hist["ACR"],  mode="lines+markers",
 fig2.add_trace(go.Scatter(x=hist["years"], y=hist["AER"],  mode="lines+markers", name="AER (%)", yaxis="y2"))
 fig2.update_layout(
     yaxis=dict(title="per 10k events"),
-    yaxis2=dict(title="AER (%)", overlaying="y", side="right", range=[99,100], tickformat=".3f"),
+    yaxis2=dict(title="AER (%)", overlaying="y", side="right", range=[99.8,100], tickformat=".3f"),
     height=360, margin=dict(l=10,r=10,t=10,b=10)
 )
 st.plotly_chart(fig2, use_container_width=True)
