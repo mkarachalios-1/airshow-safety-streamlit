@@ -245,11 +245,17 @@ if not f.empty:
     fig3 = go.Figure(data=[go.Pie(labels=list(five.keys()), values=list(five.values()))])
     fig3.update_traces(textinfo="percent+label", textposition="outside", automargin=True)
     fig3.update_layout(
-        height=440,
-        margin=dict(l=60, r=60, t=40, b=90),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
+    height=440,
+    margin=dict(l=60, r=220, t=40, b=60),
+    showlegend=True,
+    legend=dict(
+        orientation="v",
+        x=1.02,          # place legend to the right of the plot area
+        y=0.5,
+        xanchor="left",
+        yanchor="middle"
     )
+)
     st.plotly_chart(fig3, use_container_width=True)
 st.divider()
 
@@ -280,11 +286,17 @@ if not f.empty:
         fig4 = go.Figure(data=[go.Pie(labels=[i[0] for i in items], values=[i[1] for i in items])])
         fig4.update_traces(textinfo="percent+label", textposition="outside", automargin=True)
         fig4.update_layout(
-            height=440,
-            margin=dict(l=60, r=60, t=40, b=90),
-            showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
-        )
+    height=440,
+    margin=dict(l=60, r=220, t=40, b=60),
+    showlegend=True,
+    legend=dict(
+        orientation="v",
+        x=1.02,          # place legend to the right of the plot area
+        y=0.5,
+        xanchor="left",
+        yanchor="middle"
+    )
+)
         st.plotly_chart(fig4, use_container_width=True)
 st.divider()
 
