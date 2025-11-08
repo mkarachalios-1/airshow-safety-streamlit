@@ -144,8 +144,7 @@ if "df_override" in st.session_state:
     df = st.session_state["df_override"]
 
 # --------- UI ---------
-st.title("Airshow Safety & Excellence Database")
-st.markdown("#### 5M-aligned repository of airshow accidents (1908–2025). Use search and filters below. Charts update as you filter.")
+st.title("Airshow Safety & Excellence")
 st.markdown("### Barker Airshow Incident & Accident Database")
 
 q = st.text_input("Search", placeholder="e.g. engine, loop, MAC, Duxford")
