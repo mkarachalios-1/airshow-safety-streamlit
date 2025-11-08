@@ -4,7 +4,7 @@ import numpy as np
 import json
 from pathlib import Path
 
-# ---------- resilient plotly import ----------
+# --------- resilient plotly import ----------
 try:
     import plotly.graph_objects as go
 except Exception:
@@ -14,15 +14,15 @@ except Exception:
 
 st.set_page_config(page_title="Airshow Safety & Excellence Database", layout="wide")
 
-# ---------- paths (write to /tmp so it works on Streamlit Cloud) ----------
-PKG_DATA = Path(__file__).parent / "data" / "airshow_accidents.json"      # packaged copy (read-only)
-WORK_DATA = Path("/tmp/airshow_accidents.json")                           # live working copy (writable)
-RATES_JSON = Path(__file__).parent / "data" / "historical_rates.json"     # packaged rates (read-only)
+# --------- paths (read-only packaged data + writable working copy) ----------
+PKG_DATA = Path(__file__).parent / "data" / "airshow_accidents.json"   # repo file
+RATES_JSON = Path(__file__).parent / "data" / "historical_rates.json"  # repo file
+WORK_DATA = Path("/tmp/airshow_accidents.json")                        # live working copy
 WORK_DATA.parent.mkdir(parents=True, exist_ok=True)
 
-# ---------- helpers ----------
-def parse_date_column(s: pd.Series, year_col: pd.Series | None = None) -> pd.Series:
-    """Robust date parsing. Only treat large numbers as epoch. Ignore tiny numbers (prevents 1970)."""
+# --------- helpers ----------
+def parse_date_column(s, year_col=None):
+    """Robust date parsing; only large numbers are treated as epoch."""
     if s is None or len(s) == 0:
         return pd.to_datetime(pd.Series([], dtype="datetime64[ns]"))
     if pd.api.types.is_numeric_dtype(s):
@@ -41,17 +41,57 @@ def parse_date_column(s: pd.Series, year_col: pd.Series | None = None) -> pd.Ser
         dt.loc[bad_1970 & y.notna() & (y != 1970)] = pd.NaT
     return dt
 
-def sort_key_from_date(df: pd.DataFrame) -> pd.Series:
-    """Sort key: prefer real date; fallback to Jan-01 of 'year'."""
+def sort_key_from_date(df):
     d = pd.to_datetime(df.get("date"), errors="coerce")
     y = pd.to_numeric(df.get("year"), errors="coerce")
     fallback = pd.to_datetime(y, format="%Y", errors="coerce")
     return d.fillna(fallback)
 
-# ---------- data ----------
+# ---- GitHub commit helper ----
+def commit_work_data_to_github():
+    repo   = st.secrets.get("GITHUB_REPO")
+    token  = st.secrets.get("GITHUB_TOKEN")
+    branch = st.secrets.get("GITHUB_BRANCH", "main")
+    if not (repo and token):
+        return False, "GitHub secrets missing"
+    try:
+        try:
+            import requests, base64
+        except Exception:
+            import sys, subprocess
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
+            import requests, base64
+
+        api = f"https://api.github.com/repos/{repo}/contents/data/airshow_accidents.json"
+
+        # get SHA if file exists
+        r = requests.get(
+            api,
+            headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"},
+            params={"ref": branch},
+            timeout=30
+        )
+        sha = r.json().get("sha") if r.status_code == 200 else None
+
+        content_b64 = base64.b64encode(WORK_DATA.read_bytes()).decode("utf-8")
+        payload = {"message": "Add record via Streamlit admin", "content": content_b64, "branch": branch}
+        if sha:
+            payload["sha"] = sha
+
+        put = requests.put(
+            api,
+            headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"},
+            json=payload,
+            timeout=30
+        )
+        return (put.status_code in (200, 201)), put.text[:200]
+    except Exception as e:
+        return False, str(e)[:200]
+
+# --------- data loading (cached) ----------
 @st.cache_data
 def load_data():
-    # ensure we have a writable working copy in /tmp
+    # choose source for initial load
     if WORK_DATA.exists():
         src = WORK_DATA
     elif PKG_DATA.exists():
@@ -72,7 +112,6 @@ def load_data():
             "man_factor","machine_factor","medium_factor","mission_factor","management_factor"
         ])
     else:
-        # parse/repair
         df["date"] = parse_date_column(df.get("date"), df.get("year"))
         if "year" not in df.columns:
             df["year"] = df["date"].dt.year
@@ -86,13 +125,12 @@ def load_data():
                 df[c] = 0
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
 
-    # write an initial working copy if it doesn't exist
+    # ensure we have a working copy in /tmp
     if not WORK_DATA.exists() and not df.empty:
         tmp = df.copy()
         tmp["date"] = pd.to_datetime(tmp["date"], errors="coerce").dt.strftime("%Y-%m-%d")
         WORK_DATA.write_text(tmp.to_json(orient="records"), encoding="utf-8")
 
-    # load rates
     hist = {"years": [], "BAAR": [], "AFR": [], "ACR": [], "AER": []}
     if RATES_JSON.exists():
         try:
@@ -102,12 +140,10 @@ def load_data():
     return df, hist
 
 df, hist = load_data()
-
-# prefer runtime-updated df if we have it
 if "df_override" in st.session_state:
     df = st.session_state["df_override"]
 
-# ---------- UI ----------
+# --------- UI ---------
 st.title("Airshow Safety & Excellence Database")
 st.markdown("#### 5M-aligned repository of airshow accidents (1908–2025). Use search and filters below. Charts update as you filter.")
 st.markdown("### Barker Airshow Incident & Accident Database")
@@ -132,7 +168,7 @@ m_med  = c5.checkbox("Medium", True)
 m_mis  = c6.checkbox("Mission", True)
 m_mgmt = c7.checkbox("Management", True)
 
-# ---------- filtering ----------
+# --------- filtering ---------
 f = df[(df["year"] >= year_from) & (df["year"] <= year_to)].copy() if not df.empty else df.copy()
 
 if not f.empty:
@@ -164,25 +200,26 @@ if not f.empty and q:
     ).str.lower()
     f = f[hay.str.contains(q.lower(), na=False)]
 
-# ---------- KPIs ----------
+# --------- KPIs ---------
 k1, k2, k3 = st.columns(3)
 k1.metric("Accidents/Incidents", int(f.shape[0]) if not f.empty else 0)
 k2.metric("Fatalities", int(f["fatalities"].sum()) if not f.empty else 0)
 k3.metric("Casualties", int(f["casualties"].sum()) if not f.empty else 0)
 
-# ---------- Charts (with spacing) ----------
+# --------- Charts (with spacing) ---------
 if not f.empty and "year" in f.columns:
     by_year = f.dropna(subset=["year"]).groupby("year").size().reset_index(name="count")
     fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(x=by_year["year"], y=by_year["count"],
-                              mode="lines+markers", name="Accidents (filtered)"))
-    fig1.update_layout(height=380, margin=dict(l=10, r=10, t=20, b=10))
+    fig1.add_trace(go.Scatter(x=by_year["year"], y=by_year["count"], mode="lines+markers", name="Accidents (filtered)"))
+    fig1.update_layout(height=400, margin=dict(l=12, r=12, t=28, b=12))
     st.plotly_chart(fig1, use_container_width=True)
 st.divider()
 
 if hist.get("years"):
     fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=hist["years"], y=hist["BAAR"], mode="lines+markers", name="BAAR (per 10k)"))
+    # BAAR in red
+    fig2.add_trace(go.Scatter(x=hist["years"], y=hist["BAAR"], mode="lines+markers",
+                              name="BAAR (per 10k)", line=dict(color="#e74c3c")))
     fig2.add_trace(go.Scatter(x=hist["years"], y=hist["AFR"],  mode="lines+markers", name="AFR (per 10k)"))
     fig2.add_trace(go.Scatter(x=hist["years"], y=hist["ACR"],  mode="lines+markers", name="ACR (per 10k)"))
     # AER in green on right axis 99.800–100.000
@@ -192,7 +229,7 @@ if hist.get("years"):
         yaxis=dict(title="per 10k events"),
         yaxis2=dict(title="AER (%)", overlaying="y", side="right",
                     range=[99.8, 100.0], tickformat=".3f", tick0=99.8, dtick=0.05),
-        height=380, margin=dict(l=10, r=10, t=20, b=10)
+        height=400, margin=dict(l=12, r=12, t=28, b=12)
     )
     st.plotly_chart(fig2, use_container_width=True)
 st.divider()
@@ -206,8 +243,13 @@ if not f.empty:
         "Management": int((f["management_factor"]==1).sum())
     }
     fig3 = go.Figure(data=[go.Pie(labels=list(five.keys()), values=list(five.values()))])
-    fig3.update_traces(textinfo="percent+label", hovertemplate="%{label}: %{value}")
-    fig3.update_layout(height=380, margin=dict(l=10, r=10, t=20, b=10), showlegend=True)
+    fig3.update_traces(textinfo="percent+label", textposition="outside", automargin=True)
+    fig3.update_layout(
+        height=440,
+        margin=dict(l=60, r=60, t=40, b=90),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
+    )
     st.plotly_chart(fig3, use_container_width=True)
 st.divider()
 
@@ -236,12 +278,17 @@ if not f.empty:
         items.append(("Other", other))
     if items:
         fig4 = go.Figure(data=[go.Pie(labels=[i[0] for i in items], values=[i[1] for i in items])])
-        fig4.update_traces(textinfo="percent+label", hovertemplate="%{label}: %{value}")
-        fig4.update_layout(height=380, margin=dict(l=10, r=10, t=20, b=10), showlegend=True)
+        fig4.update_traces(textinfo="percent+label", textposition="outside", automargin=True)
+        fig4.update_layout(
+            height=440,
+            margin=dict(l=60, r=60, t=40, b=90),
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
+        )
         st.plotly_chart(fig4, use_container_width=True)
 st.divider()
 
-# ---------- Table (newest first) ----------
+# --------- Table (newest first; clean dates) ---------
 if not f.empty:
     f = f.assign(_sort_key=sort_key_from_date(f))
     f = f.sort_values("_sort_key", ascending=False).drop(columns=["_sort_key"])
@@ -256,7 +303,7 @@ else:
     disp = pd.DataFrame()
 st.dataframe(disp, use_container_width=True, hide_index=True)
 
-# ---------- Admin: add record ----------
+# --------- Admin: add record + persist to GitHub ---------
 with st.expander("Admin: add incident/accident", expanded=False):
     ok = True
     if "ADMIN_PASSWORD" in st.secrets:
@@ -331,22 +378,27 @@ with st.expander("Admin: add incident/accident", expanded=False):
             new["fatalities"] = new["pilot_killed"] + new["crew_kill"] + new["pax_kill"]
             new["casualties"] = new["fatalities"] + new["pilot_injured"] + new["crew_inj"] + new["pax_inj"]
 
-            # read working copy, append, save (ISO dates) in /tmp
+            # append to working copy (/tmp), save as ISO, then commit to GitHub
             try:
                 cur = pd.read_json(WORK_DATA) if WORK_DATA.exists() else pd.DataFrame()
             except Exception:
                 cur = pd.DataFrame()
             cur = pd.concat([cur, pd.DataFrame([new])], ignore_index=True)
 
-            # ensure proper datetime then write ISO
             parsed = parse_date_column(cur.get("date"), cur.get("year"))
             cur["date"] = parsed.dt.strftime("%Y-%m-%d")
             WORK_DATA.write_text(cur.to_json(orient="records"), encoding="utf-8")
 
-            # make the new df visible immediately
+            # screen update
             cur_disp = cur.copy()
             cur_disp["date"] = pd.to_datetime(cur_disp["date"], errors="coerce")
             st.session_state["df_override"] = cur_disp
+
+            ok_git, info = commit_work_data_to_github()
+            if ok_git:
+                st.success("Saved and committed to GitHub.")
+            else:
+                st.info("Saved for this session only. To persist, set GITHUB_REPO, GITHUB_BRANCH, GITHUB_TOKEN.")
 
             st.cache_data.clear()
             st.rerun()
