@@ -38,6 +38,7 @@ _CONTINENT_MAP = {
     "bulgaria":"Europe","greece":"Europe","serbia":"Europe","croatia":"Europe","slovenia":"Europe","slovakia":"Europe",
     "bosnia":"Europe","north macedonia":"Europe","albania":"Europe","estonia":"Europe","latvia":"Europe","lithuania":"Europe",
     "ukraine":"Europe","russia":"Europe","turkey":"Europe","türkiye":"Europe","turkiye":"Europe","georgia":"Europe","armenia":"Europe",
+    "cyprus":"Europe",  # ← added
     # Asia
     "china":"Asia","japan":"Asia","south korea":"Asia","korea, south":"Asia","north korea":"Asia","india":"Asia","pakistan":"Asia",
     "bangladesh":"Asia","sri lanka":"Asia","nepal":"Asia","myanmar":"Asia","thailand":"Asia","vietnam":"Asia","malaysia":"Asia",
@@ -84,7 +85,6 @@ def sort_key_from_date(df):
     return d.fillna(fallback)
 
 def series_sum(df: pd.DataFrame, cols: list[str]) -> pd.Series:
-    """Safe aligned sum across possibly missing columns."""
     total = pd.Series(0, index=df.index, dtype="float64")
     for c in cols:
         if c in df.columns:
@@ -127,7 +127,6 @@ def commit_work_data_to_github():
 # --------- data loading (cached) ----------
 @st.cache_data
 def load_data():
-    # choose source
     if WORK_DATA.exists():
         src = WORK_DATA
     elif PKG_DATA.exists():
@@ -159,16 +158,13 @@ def load_data():
                 df[c] = 0
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
 
-    # continent derive
     df["continent"] = df.get("country","").astype(str).apply(country_to_continent)
 
-    # ensure a working copy in /tmp for admin appends
     if not WORK_DATA.exists() and not df.empty:
         tmp = df.copy()
         tmp["date"] = pd.to_datetime(tmp["date"], errors="coerce").dt.strftime("%Y-%m-%d")
         WORK_DATA.write_text(tmp.to_json(orient="records"), encoding="utf-8")
 
-    # historical rates
     hist = {"years": [], "BAAR": [], "AFR": [], "ACR": [], "AER": []}
     if RATES_JSON.exists():
         try:
@@ -186,7 +182,6 @@ st.title("Airshow Safety & Excellence Database")
 st.markdown("#### 5M-aligned repository of airshow accidents (1908–2025). Use search and filters below. Charts update as you filter.")
 st.markdown("### Barker Airshow Incident & Accident Database")
 
-# Force reload button (clears cached /tmp copy and cache)
 cols_reload = st.columns([1,6,1])
 with cols_reload[0]:
     if st.button("🔄 Force reload from repo"):
@@ -197,10 +192,8 @@ with cols_reload[0]:
         st.cache_data.clear()
         st.rerun()
 
-# ---- TEXT SEARCH
 q = st.text_input("Search", placeholder="e.g. engine, loop, MAC, Duxford")
 
-# ---- YEAR
 if df["year"].dropna().empty:
     ymin, ymax = 1908, 2025
 else:
@@ -209,7 +202,6 @@ c_year1, c_year2 = st.columns(2)
 year_from = c_year1.number_input("Year from", value=ymin, min_value=ymin, max_value=ymax, step=1)
 year_to   = c_year2.number_input("to",        value=ymax, min_value=ymin, max_value=ymax, step=1)
 
-# ---- dropdown filters
 col_a, col_b, col_c = st.columns(3)
 aircraft_options = sorted([x for x in df.get("aircraft_type","").dropna().unique() if str(x).strip()])
 country_options  = sorted([x for x in df.get("country","").dropna().unique() if str(x).strip()])
@@ -229,7 +221,6 @@ severity = col_e.selectbox(
     index=0
 )
 
-# ---- toggles
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 acc_on = c1.checkbox("Accidents", True)
 inc_on = c2.checkbox("Incidents", True)
@@ -239,7 +230,6 @@ m_med  = c5.checkbox("Medium", True)
 m_mis  = c6.checkbox("Mission", True)
 m_mgmt = c7.checkbox("Management", True)
 
-# --------- filtering ---------
 f = df[(df["year"] >= year_from) & (df["year"] <= year_to)].copy() if not df.empty else df.copy()
 
 if len(sel_aircraft):  f = f[f["aircraft_type"].isin(sel_aircraft)]
@@ -296,13 +286,11 @@ if not f.empty and q:
     ).str.lower()
     f = f[hay.str.contains(q.lower(), na=False)]
 
-# --------- KPIs ---------
 k1, k2, k3 = st.columns(3)
 k1.metric("Accidents/Incidents", int(f.shape[0]) if not f.empty else 0)
 k2.metric("Fatalities", int(f["fatalities"].sum()) if not f.empty else 0)
 k3.metric("Casualties", int(f["casualties"].sum()) if not f.empty else 0)
 
-# --------- Charts ---------
 if not f.empty and "year" in f.columns:
     by_year = f.dropna(subset=["year"]).groupby("year").size().reset_index(name="count")
     fig1 = go.Figure()
@@ -311,21 +299,23 @@ if not f.empty and "year" in f.columns:
     st.plotly_chart(fig1, use_container_width=True)
 st.divider()
 
-if hist.get("years"):
-    fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=hist["years"], y=hist["BAAR"], mode="lines+markers",
-                              name="BAAR (per 10k)", line=dict(color="#e74c3c")))  # red
-    fig2.add_trace(go.Scatter(x=hist["years"], y=hist["AFR"],  mode="lines+markers", name="AFR (per 10k)"))
-    fig2.add_trace(go.Scatter(x=hist["years"], y=hist["ACR"],  mode="lines+markers", name="ACR (per 10k)"))
-    fig2.add_trace(go.Scatter(x=hist["years"], y=hist["AER"],  mode="lines+markers",
-                              name="AER (%)", yaxis="y2", line=dict(color="#2ecc71")))  # green
-    fig2.update_layout(
-        yaxis=dict(title="per 10k events"),
-        yaxis2=dict(title="AER (%)", overlaying="y", side="right",
-                    range=[99.8, 100.0], tickformat=".3f", tick0=99.8, dtick=0.05),
-        height=400, margin=dict(l=12, r=12, t=28, b=12)
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+if RATES_JSON.exists():
+    hist = json.loads(RATES_JSON.read_text())
+    if hist.get("years"):
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(x=hist["years"], y=hist["BAAR"], mode="lines+markers",
+                                  name="BAAR (per 10k)", line=dict(color="#e74c3c")))
+        fig2.add_trace(go.Scatter(x=hist["years"], y=hist["AFR"],  mode="lines+markers", name="AFR (per 10k)"))
+        fig2.add_trace(go.Scatter(x=hist["years"], y=hist["ACR"],  mode="lines+markers", name="ACR (per 10k)"))
+        fig2.add_trace(go.Scatter(x=hist["years"], y=hist["AER"],  mode="lines+markers",
+                                  name="AER (%)", yaxis="y2", line=dict(color="#2ecc71")))
+        fig2.update_layout(
+            yaxis=dict(title="per 10k events"),
+            yaxis2=dict(title="AER (%)", overlaying="y", side="right",
+                        range=[99.8, 100.0], tickformat=".3f", tick0=99.8, dtick=0.05),
+            height=400, margin=dict(l=12, r=12, t=28, b=12)
+        )
+        st.plotly_chart(fig2, use_container_width=True)
 st.divider()
 
 if not f.empty:
@@ -347,23 +337,19 @@ if not f.empty:
     st.plotly_chart(fig3, use_container_width=True)
 st.divider()
 
-# --------- Manoeuvre pie (with robust Split‑S detection) ---------
+# --------- Manoeuvre pie (robust Split‑S detection) ---------
 if not f.empty:
     txt = (
         f.get("manoeuvre","").astype(str) + " " +
         f.get("remarks","").astype(str) + " " +
         f.get("contributing_factor","").astype(str)
     ).str.lower()
-
-    # normalise hyphens/dashes to "-"
     txtn = txt.str.replace(r"[–—‑-]", "-", regex=True)
-
-    # (regex, label) — note: synonyms accumulate into the same label
     patterns = [
         (r"\bcuban\s*8\b|\bcuban\s*eight\b", "Cuban 8"),
         (r"\bloop\b", "Loop"),
         (r"\bimmelman+n?\b", "Immelman"),
-        (r"split[\s\-]?s\b", "Split-S"),            # <— includes Split‑S / Split S
+        (r"split[\s\-]?s\b", "Split-S"),
         (r"\bbarrel\s*roll\b", "Barrel roll"),
         (r"\baileron\s*roll\b|\bslow\s*roll\b|\broll\b", "Roll"),
         (r"\bspin\b", "Spin"),
@@ -372,19 +358,15 @@ if not f.empty:
         (r"\bsnap\s*roll\b", "Snap roll"),
         (r"\blomcevak\b", "Lomcevak"),
     ]
-
     counts = {}
     for rgx, label in patterns:
         counts[label] = counts.get(label, 0) + int(txtn.str.contains(rgx, regex=True).sum())
-
     items = [(k, v) for k, v in counts.items() if v > 0]
     items.sort(key=lambda x: x[1], reverse=True)
-
     other = sum(v for _, v in items[10:])
     items = items[:10]
     if other > 0:
         items.append(("Other", other))
-
     if items:
         fig4 = go.Figure(data=[go.Pie(labels=[i[0] for i in items], values=[i[1] for i in items])])
         fig4.update_traces(textinfo="percent+label", textposition="outside", automargin=True)
@@ -418,23 +400,19 @@ with st.expander("Admin: add incident/accident", expanded=False):
     ok = True
     if "ADMIN_PASSWORD" in st.secrets:
         ok = st.text_input("Admin password", type="password") == st.secrets["ADMIN_PASSWORD"]
-
     if ok:
         with st.form("add_record"):
             colA, colB, colC = st.columns(3)
             date = colA.date_input("Date")
             aircraft_type = colB.text_input("Aircraft type")
             category = colC.selectbox("Category", ["Accident","Incident"])
-
             col1, col2, col3 = st.columns(3)
             country = col1.text_input("Country")
             event_name = col2.text_input("Event name")
             location = col3.text_input("Location")
-
             manoeuvre = st.text_input("Manoeuvre")
             remarks = st.text_area("Remarks / Notes")
             contributing_factor = st.text_area("Contributing factor")
-
             st.write("Casualties")
             cf1, cf2, cf3 = st.columns(3)
             pilot_killed  = cf1.number_input("Pilot killed",  min_value=0, step=1)
@@ -443,16 +421,13 @@ with st.expander("Admin: add incident/accident", expanded=False):
             crew_inj      = cf2.number_input("Crew injured",  min_value=0, step=1)
             pax_kill      = cf3.number_input("Pax killed",    min_value=0, step=1)
             pax_inj       = cf3.number_input("Pax injured",   min_value=0, step=1)
-
             fx1, fx2, fx3, fx4, fx5 = st.columns(5)
             fit = fx1.checkbox("FIT")
             mac = fx2.checkbox("MAC")
             loc = fx3.checkbox("LOC")
             mechanical = fx4.checkbox("Mechanical/Structural")
             enviro = fx5.checkbox("Environmental")
-
             submit = st.form_submit_button("Add to database")
-
         if submit:
             new = {
                 "date": pd.to_datetime(date).strftime("%Y-%m-%d"),
@@ -473,7 +448,6 @@ with st.expander("Admin: add incident/accident", expanded=False):
                 "crew_kill": int(crew_kill), "crew_inj": int(crew_inj),
                 "pax_kill": int(pax_kill), "pax_inj": int(pax_inj),
             }
-            # derive 5M
             man  = 1 if (new["loc"]==1 or new["fit"]==1) else 0
             mach = 1 if (new["mechanical"]==1 or new["structural"]==1) else 0
             med  = 1 if (new["enviro"]==1 or new["weather"]==1 or new["bird_strike"]==1) else 0
@@ -488,28 +462,21 @@ with st.expander("Admin: add incident/accident", expanded=False):
             })
             new["fatalities"] = new["pilot_killed"] + new["crew_kill"] + new["pax_kill"]
             new["casualties"] = new["fatalities"] + new["pilot_injured"] + new["crew_inj"] + new["pax_inj"]
-
-            # append to working copy (/tmp), save as ISO
             try:
                 cur = pd.read_json(WORK_DATA) if WORK_DATA.exists() else pd.DataFrame()
             except Exception:
                 cur = pd.DataFrame()
             cur = pd.concat([cur, pd.DataFrame([new])], ignore_index=True)
-
             parsed = parse_date_column(cur.get("date"), cur.get("year"))
             cur["date"] = parsed.dt.strftime("%Y-%m-%d")
             WORK_DATA.write_text(cur.to_json(orient="records"), encoding="utf-8")
-
-            # update screen and optionally commit
             cur_disp = cur.copy()
             cur_disp["date"] = pd.to_datetime(cur_disp["date"], errors="coerce")
             st.session_state["df_override"] = cur_disp
-
             ok_git, info = commit_work_data_to_github()
             if ok_git:
                 st.success("Saved and committed to GitHub.")
             else:
                 st.info("Saved for this session only. To persist, set GITHUB_REPO, GITHUB_BRANCH, GITHUB_TOKEN.")
-
             st.cache_data.clear()
             st.rerun()
