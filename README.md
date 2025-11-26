@@ -1,1 +1,1 @@
-Admin-enabled Streamlit app. Set secrets: ADMIN_PASSWORD, and optionally GITHUB_REPO, GITHUB_BRANCH, GITHUB_TOKEN.
+Airshow Safety & Excellence Dashboard, based on Barker's Airshow Accident and Incident Database; Last update: 26 November 2025
