@@ -12,7 +12,7 @@ except Exception:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "plotly"])
     import plotly.graph_objects as go
 
-st.set_page_config(page_title="Airshow Safety & Excellence Database", layout="wide")
+st.set_page_config(page_title="Airshow Safety & Excellence Dashboard", layout="wide")
 
 # --------- paths ----------
 DATA_DIR   = Path(__file__).parent / "data"
