@@ -146,7 +146,6 @@ df, hist = load_data()
 # --------- UI header ----------
 st.title("Airshow Safety & Excellence Database")
 st.markdown(
-    "#### 5M-aligned repository of airshow accidents (1908–2025). "
     "Use search and filters below. Charts update as you filter."
 )
 st.markdown("### Barker Airshow Incident & Accident Database")
