@@ -12,7 +12,7 @@ except Exception:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "plotly"])
     import plotly.graph_objects as go
 
-st.set_page_config(page_title="Airshow Safety & Excellence Dashboard", layout="wide")
+st.set_page_config(page_title="Airshow Safety & Excellence Database", layout="wide")
 
 # --------- paths ----------
 DATA_DIR   = Path(__file__).parent / "data"
@@ -144,11 +144,12 @@ def load_data():
 df, hist = load_data()
 
 # --------- UI header ----------
-st.title("Airshow Safety & Excellence Dashboard")
+st.title("Airshow Safety & Excellence Database")
 st.markdown(
+    "#### 5M-aligned repository of airshow accidents (1908–2025). "
     "Use search and filters below. Charts update as you filter."
 )
-st.markdown("### Based on Barker's Airshow Incident & Accident Database")
+st.markdown("### Barker Airshow Incident & Accident Database")
 
 # Basic debug: how many records loaded
 st.caption(f"Records loaded from JSON: {len(df)}")
@@ -327,24 +328,61 @@ st.divider()
 
 # 2. Historical BAAR / AFR / ACR + AER
 if hist.get("years"):
-    years = hist["years"]
+    # Put JSON into a DataFrame for easy slicing
+    rates = pd.DataFrame(hist)
+
+    # All years (for BAAR & AER)
+    years_all = rates["years"]
+
+    # AFR / ACR are only valid from 2018 onwards
+    afr_acr_start = 2019
+    mask_afr_acr = years_all >= afr_acr_start
+
     fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(
-        x=years, y=hist["BAAR"], mode="lines+markers",
-        name="BAAR (per 10k)", line=dict(color="#e74c3c")
-    ))
-    fig2.add_trace(go.Scatter(
-        x=years, y=hist["AFR"], mode="lines+markers",
-        name="AFR (per 10k)"
-    ))
-    fig2.add_trace(go.Scatter(
-        x=years, y=hist["ACR"], mode="lines+markers",
-        name="ACR (per 10k)"
-    ))
-    fig2.add_trace(go.Scatter(
-        x=years, y=hist["AER"], mode="lines+markers",
-        name="AER (%)", yaxis="y2", line=dict(color="#2ecc71")
-    ))
+
+    # BAAR: full history, in red
+    fig2.add_trace(
+        go.Scatter(
+            x=years_all,
+            y=rates["BAAR"],
+            mode="lines+markers",
+            name="BAAR (per 10k)",
+            line=dict(color="#e74c3c"),
+        )
+    )
+
+    # AFR: from 2018 onwards only
+    fig2.add_trace(
+        go.Scatter(
+            x=rates.loc[mask_afr_acr, "years"],
+            y=rates.loc[mask_afr_acr, "AFR"],
+            mode="lines+markers",
+            name="AFR (per 10k)",
+        )
+    )
+
+    # ACR: from 2018 onwards only
+    fig2.add_trace(
+        go.Scatter(
+            x=rates.loc[mask_afr_acr, "years"],
+            y=rates.loc[mask_afr_acr, "ACR"],
+            mode="lines+markers",
+            name="ACR (per 10k)",
+        )
+    )
+
+    # AER: full history, on right axis, in green
+    fig2.add_trace(
+        go.Scatter(
+            x=years_all,
+            y=rates["AER"],
+            mode="lines+markers",
+            name="AER (%)",
+            yaxis="y2",
+            line=dict(color="#2ecc71"),
+        )
+    )
+
     fig2.update_layout(
         yaxis=dict(title="per 10k events"),
         yaxis2=dict(
@@ -359,7 +397,9 @@ if hist.get("years"):
         height=400,
         margin=dict(l=12, r=12, t=28, b=12),
     )
+
     st.plotly_chart(fig2, use_container_width=True)
+
 
 st.divider()
 
