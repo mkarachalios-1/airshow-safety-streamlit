@@ -144,12 +144,11 @@ def load_data():
 df, hist = load_data()
 
 # --------- UI header ----------
-st.title("Airshow Safety & Excellence Database")
+st.title("Airshow Safety & Excellence Dashboard")
 st.markdown(
-    "#### 5M-aligned repository of airshow accidents (1908–2025). "
     "Use search and filters below. Charts update as you filter."
 )
-st.markdown("### Barker Airshow Incident & Accident Database")
+st.markdown("### Based on Des Barker's Airshow Safety Occurrences Database")
 
 # Basic debug: how many records loaded
 st.caption(f"Records loaded from JSON: {len(df)}")
