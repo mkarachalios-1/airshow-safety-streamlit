@@ -150,9 +150,6 @@ st.markdown(
 )
 st.markdown("### Based on Des Barker's Airshow Safety Occurrences Database")
 
-# Basic debug: how many records loaded
-st.caption(f"Records loaded from JSON: {len(df)}")
-
 # --------- Text search ----------
 q = st.text_input("Search", placeholder="e.g. engine, loop, MAC, Duxford")
 
